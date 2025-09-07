@@ -1,28 +1,4 @@
-name: "Release Bottles"
-
-on:
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
-jobs:
-  build-and-release:
-    strategy:
-      matrix:
-        os: [macos-15, macos-14, macos-13]
-        arch: [arm64, x86_64]
-        exclude:
-          - os: macos-15
-            arch: x86_64
-      fail-fast: false
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Check for existing bottle on release
+- name: Check for existing bottle on release
         id: check_bottle
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -35,25 +11,25 @@ jobs:
             exit 1
           fi
 
-          # バージョン番号とリビジョンをより厳密に抽出するように修正
-          FORMULA_TAG=$(grep 'url' "$FORMULA_FILE" | grep -o 'v[0-9._]*' | sed 's/^v//' | tr -d '\n' || true)
-          if [[ -z "$FORMULA_TAG" ]]; then
-            echo "::warning::Could not determine formula tag from '$FORMULA_FILE'. Using fallback."
-            FORMULA_TAG="0.38.0"
+          # Homebrewのurlからバージョン番号を正確に抽出
+          # `url`行のみを対象にし、`root_url`は無視する
+          FORMULA_VERSION=$(grep '  url ' "$FORMULA_FILE" | sed -E 's/.*v([0-9.]*)\.tar\.gz.*/\1/' | tr -d '\n' || true)
+          if [[ -z "$FORMULA_VERSION" ]]; then
+            echo "::warning::Could not determine formula version. Using fallback."
+            FORMULA_VERSION="0.40.0"
           fi
-
-          # リビジョンが存在するか確認
-          if [[ "$FORMULA_TAG" == *_* ]]; then
-            FORMULA_VERSION=$(echo "$FORMULA_TAG" | cut -d'_' -f1)
-            FORMULA_REVISION=$(echo "$FORMULA_TAG" | cut -d'_' -f2)
-          else
-            FORMULA_VERSION=$FORMULA_TAG
+          
+          # Homebrewのrevisionからリビジョン番号を正確に抽出
+          FORMULA_REVISION=$(grep -E '^\s*revision\s+[0-9]+' "$FORMULA_FILE" | awk '{print $2}' | tr -d '\n' || true)
+          if [[ -z "$FORMULA_REVISION" ]]; then
             FORMULA_REVISION="0"
           fi
           
-          RELEASE_TAG="v${FORMULA_VERSION}_${FORMULA_REVISION}"
+          # リリースタグを生成
           if [ "$FORMULA_REVISION" == "0" ]; then
             RELEASE_TAG="v$FORMULA_VERSION"
+          else
+            RELEASE_TAG="v${FORMULA_VERSION}_${FORMULA_REVISION}"
           fi
           
           OS_VERSION="${{ matrix.os }}"
@@ -75,12 +51,13 @@ jobs:
               ARCH_PREFIX=""
           fi
           
-          FILE_NAME="${FORMULA_NAME}-${FORMULA_VERSION}_${FORMULA_REVISION}.${ARCH_PREFIX}${OS_TAG}.bottle.tar.gz"
-          # リビジョンが0の場合はファイル名から_0を削除
+          # ファイル名を生成。リビジョンが0の場合は'_0'を含めない。
           if [ "$FORMULA_REVISION" == "0" ]; then
             FILE_NAME="${FORMULA_NAME}-${FORMULA_VERSION}.${ARCH_PREFIX}${OS_TAG}.bottle.tar.gz"
+          else
+            FILE_NAME="${FORMULA_NAME}-${FORMULA_VERSION}_${FORMULA_REVISION}.${ARCH_PREFIX}${OS_TAG}.bottle.tar.gz"
           fi
-
+          
           FILE_NAME=$(echo "$FILE_NAME" | sed 's/--/-/g')
           
           echo "Expected file: $FILE_NAME"
@@ -95,3 +72,9 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "--- Bottle does not exist. Proceeding with build. ---"
           fi
+
+          
+          gh release upload "$RELEASE_TAG" \
+            "${{ steps.bottle.outputs.BOTTLE_FILENAME }}" \
+            "${{ steps.bottle.outputs.JSON_FILENAME }}" \
+            --clobber
