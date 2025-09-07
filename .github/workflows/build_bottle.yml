@@ -89,13 +89,6 @@ jobs:
             echo "--- Using default Homebrew for arm64 ---"
           fi
 
-      - name: Force link conflicting dependencies
-        if: steps.check_bottle.outputs.skip == 'false'
-        run: |
-          if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            arch -x86_64 brew link --overwrite python@3.13
-          fi
-
       - name: Tap formula
         if: steps.check_bottle.outputs.skip == 'false'
         run: |
@@ -112,10 +105,10 @@ jobs:
         id: bottle
         run: |
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            arch -x86_64 brew install mpv-lgpl --build-bottle
+            HOMEBREW_OVERWRITE=true arch -x86_64 brew install mpv-lgpl --build-bottle
             arch -x86_64 brew bottle --json --no-rebuild mpv-lgpl
           else
-            brew install mpv-lgpl --build-bottle
+            HOMEBREW_OVERWRITE=true brew install mpv-lgpl --build-bottle
             brew bottle --json --no-rebuild mpv-lgpl
           fi
           
