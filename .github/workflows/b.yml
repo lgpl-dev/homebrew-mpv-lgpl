@@ -35,29 +35,19 @@ jobs:
             exit 1
           fi
 
-          # `bottle do`ブロック内の`root_url`からバージョンを抽出
-          # この方法が、ビルドされたバイナリのバージョンと最も一致します
+          # `bottle do`ブロックの`root_url`からバージョンとリビジョンをまとめて抽出
           FORMULA_TAG=$(grep 'root_url ' "$FORMULA_FILE" | grep -o 'v[0-9.]*_[0-9.]*' | sed 's/^v//' | tr -d '\n' || true)
           if [[ -z "$FORMULA_TAG" ]]; then
-            echo "::warning::Could not determine formula tag from 'root_url'. Using fallback."
-            FORMULA_TAG="0.40.0"
+            echo "::error::Could not determine formula tag from 'root_url'. Aborting."
+            exit 1
           fi
           
-          # タグからバージョンとリビジョンを分離
-          if [[ "$FORMULA_TAG" == *_* ]]; then
-            FORMULA_VERSION=$(echo "$FORMULA_TAG" | cut -d'_' -f1)
-            FORMULA_REVISION=$(echo "$FORMULA_TAG" | cut -d'_' -f2)
-          else
-            FORMULA_VERSION=$FORMULA_TAG
-            FORMULA_REVISION="0"
-          fi
+          # 抽出したタグからバージョンとリビジョンを分離
+          FORMULA_VERSION=$(echo "$FORMULA_TAG" | cut -d'_' -f1)
+          FORMULA_REVISION=$(echo "$FORMULA_TAG" | cut -d'_' -f2)
           
           # リリースタグを生成
-          if [ "$FORMULA_REVISION" == "0" ]; then
-            RELEASE_TAG="v$FORMULA_VERSION"
-          else
-            RELEASE_TAG="v${FORMULA_VERSION}_${FORMULA_REVISION}"
-          fi
+          RELEASE_TAG="v${FORMULA_VERSION}_${FORMULA_REVISION}"
           
           OS_VERSION="${{ matrix.os }}"
           if [ "$OS_VERSION" == "macos-15" ]; then
@@ -78,13 +68,8 @@ jobs:
               ARCH_PREFIX=""
           fi
           
-          # ファイル名を生成。リビジョンが0の場合は'_0'を含めない。
-          if [ "$FORMULA_REVISION" == "0" ]; then
-            FILE_NAME="${FORMULA_NAME}-${FORMULA_VERSION}.${ARCH_PREFIX}${OS_TAG}.bottle.tar.gz"
-          else
-            FILE_NAME="${FORMULA_NAME}-${FORMULA_VERSION}_${FORMULA_REVISION}.${ARCH_PREFIX}${OS_TAG}.bottle.tar.gz"
-          fi
-          
+          # ファイル名を生成
+          FILE_NAME="${FORMULA_NAME}-${FORMULA_VERSION}_${FORMULA_REVISION}.${ARCH_PREFIX}${OS_TAG}.bottle.tar.gz"
           FILE_NAME=$(echo "$FILE_NAME" | sed 's/--/-/g')
           
           echo "Expected file: $FILE_NAME"
