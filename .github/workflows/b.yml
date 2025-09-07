@@ -35,8 +35,8 @@ jobs:
             exit 1
           fi
 
-          # `awk`を使用して`root_url`からバージョンとリビジョンを正確に抽出
-          FORMULA_TAG=$(awk '/root_url/ {print $2}' "$FORMULA_FILE" | grep -o 'v[0-9.]*_[0-9.]*' | sed 's/^v//' | tr -d '\n' || true)
+          # `bottle do`ブロックの`root_url`からバージョンとリビジョンをまとめて抽出
+          FORMULA_TAG=$(grep 'root_url ' "$FORMULA_FILE" | grep -o 'v[0-9.]*_[0-9.]*' | sed 's/^v//' | tr -d '\n' || true)
           if [[ -z "$FORMULA_TAG" ]]; then
             echo "::error::Could not determine formula tag from 'root_url'. Aborting."
             exit 1
@@ -81,9 +81,6 @@ jobs:
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "--- Bottle for this configuration already exists. Skipping build and upload. ---"
           else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "--- Bottle does not exist. Proceeding with build. ---"
-          fi
             echo "skip=false" >> "$GITHUB_OUTPUT"
             echo "--- Bottle does not exist. Proceeding with build. ---"
           fi
