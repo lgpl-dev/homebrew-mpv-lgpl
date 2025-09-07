@@ -26,6 +26,7 @@ jobs:
           HOMEBREW_OVERWRITE: true
         run: |
           echo "--- Installing python@3.13 on x86_64 with HOMEBREW_OVERWRITE ---"
+          rm '/usr/local/bin/idle3'
           arch -x86_64 brew install python@3.13
           
       - name: Verify python installation
