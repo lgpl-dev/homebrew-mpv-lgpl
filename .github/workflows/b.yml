@@ -36,6 +36,7 @@ jobs:
           fi
 
           # `bottle do`ブロックの`root_url`からバージョンとリビジョンをまとめて抽出
+          # grepで「root_url」に厳密にマッチする行のみを抽出します
           FORMULA_TAG=$(grep 'root_url ' "$FORMULA_FILE" | grep -o 'v[0-9.]*_[0-9.]*' | sed 's/^v//' | tr -d '\n' || true)
           if [[ -z "$FORMULA_TAG" ]]; then
             echo "::error::Could not determine formula tag from 'root_url'. Aborting."
