@@ -1,4 +1,4 @@
-name: "Release Bottles"
+name: "Release Bottles b"
 
 on:
   workflow_dispatch:
