@@ -1,4 +1,28 @@
-- name: Check for existing bottle on release
+name: "Release Bottles"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        os: [macos-15, macos-14, macos-13]
+        arch: [arm64, x86_64]
+        exclude:
+          - os: macos-15
+            arch: x86_64
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for existing bottle on release
         id: check_bottle
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -73,8 +97,3 @@
             echo "--- Bottle does not exist. Proceeding with build. ---"
           fi
 
-          
-          gh release upload "$RELEASE_TAG" \
-            "${{ steps.bottle.outputs.BOTTLE_FILENAME }}" \
-            "${{ steps.bottle.outputs.JSON_FILENAME }}" \
-            --clobber
