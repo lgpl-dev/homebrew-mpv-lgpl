@@ -25,7 +25,6 @@ class MpvLgpl < Formula
     sha256 ventura:       "89bfa999618209f58abb52771b5e11fe01cbf50d773f2dbd441fee4929bbf8e4"
   end
 
-
   depends_on "docutils" => :build
   depends_on "meson" => :build
   depends_on "ninja" => :build
