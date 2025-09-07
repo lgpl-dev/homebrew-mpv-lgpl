@@ -18,7 +18,7 @@ class MpvLgpl < Formula
 
   bottle do
     root_url "https://github.com/lgpl-dev/homebrew-mpv-lgpl/releases/download/v0.40.0_4"
-    sha256 arm64_sequoia: "4091b736b2983218e29c7d082d9ce9b179d9202e4fd9a934f9c2aa4025f1fb64" 
+    sha256 arm64_sequoia: "9ed6fc67e97bc4580d4a3530946757ae78d515ec3ab6841359788c14d9e38d20" 
   end
 
   depends_on "docutils" => :build
