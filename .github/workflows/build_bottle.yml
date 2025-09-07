@@ -105,8 +105,7 @@ jobs:
         id: bottle
         run: |
           if [ "${{ matrix.arch }}" == "x86_64" ]; then
-            arch -x86_64 brew install mpv-lgpl --build-bottle
-            arch -x86_64 brew link --overwrite python@3.13  # <--- この行を追加
+            HOMEBREW_OVERWRITE=true arch -x86_64 brew install mpv-lgpl --build-bottle
             arch -x86_64 brew bottle --json --no-rebuild mpv-lgpl
           else
             brew install mpv-lgpl --build-bottle
