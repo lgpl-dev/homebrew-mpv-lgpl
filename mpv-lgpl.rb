@@ -1,4 +1,4 @@
-class Mpv < Formula
+class MpvLGPL < Formula
   desc "Media player based on MPlayer and mplayer2"
   homepage "https://mpv.io"
   license :cannot_represent
