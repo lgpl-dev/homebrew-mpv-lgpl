@@ -35,14 +35,15 @@ jobs:
             exit 1
           fi
 
-          FORMULA_VERSION=$(grep 'url' "$FORMULA_FILE" | grep -o 'mpv-.*\.tar\.[gx]z' | sed 's/mpv-//' | sed 's/\.tar\..*//' || true)
+          # バージョン番号を正しく抽出するように修正
+          FORMULA_VERSION=$(grep 'url' "$FORMULA_FILE" | grep -o 'v[0-9.]*' | sed 's/v//' || true)
           if [[ -z "$FORMULA_VERSION" ]]; then
-            echo "::warning::Could not determine formula version from '$FORMULA_FILE'."
-            # Fallback for testing
+            echo "::warning::Could not determine formula version from '$FORMULA_FILE'. Using fallback."
             FORMULA_VERSION="0.38.0"
           fi
           
-          FORMULA_REVISION=$(grep -E '^\s*revision\s+' "$FORMULA_FILE" | awk '{print $2}' || true)
+          # リビジョン番号を正しく抽出するように修正
+          FORMULA_REVISION=$(grep -E '^\s*revision\s+[0-9]+' "$FORMULA_FILE" | awk '{print $2}' || true)
           if [[ -z "$FORMULA_REVISION" ]]; then
             FORMULA_REVISION="0"
           fi
