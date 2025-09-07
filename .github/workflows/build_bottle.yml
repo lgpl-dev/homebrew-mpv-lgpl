@@ -1,0 +1,192 @@
+name: "Release MPV Bottles"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    strategy:
+      matrix:
+        os: [macos-15, macos-14, macos-13]
+        arch: [arm64, x86_64]
+        exclude:
+          - os: macos-15
+            arch: x86_64
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for existing bottle on release
+        id: check_bottle
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FORMULA_NAME="mpv-lgpl"
+          FORMULA_FILE="mpv-lgpl.rb"
+          
+          FORMULA_VERSION=$(grep 'url' "$FORMULA_FILE" | grep -o 'mpv-.*\.tar\.[gx]z' | sed 's/mpv-//' | sed 's/\.tar\..*//')
+          FORMULA_REVISION=$(grep -E '^\s*revision\s+' "$FORMULA_FILE" | awk '{print $2}')
+          
+          if [[ -z "$FORMULA_REVISION" ]]; then
+            FORMULA_REVISION="0"
+          fi
+          
+          if [ "$FORMULA_REVISION" == "0" ]; then
+            RELEASE_TAG="v$FORMULA_VERSION"
+          else
+            RELEASE_TAG="v${FORMULA_VERSION}_${FORMULA_REVISION}"
+          fi
+          
+          OS_VERSION="${{ matrix.os }}"
+          if [ "$OS_VERSION" == "macos-15" ]; then
+            OS_TAG="sequoia"
+          elif [ "$OS_VERSION" == "macos-14" ]; then
+            OS_TAG="sonoma"
+          elif [ "$OS_VERSION" == "macos-13" ]; then
+            OS_TAG="ventura"
+          else
+            OS_TAG=$(echo "$OS_VERSION" | sed 's/macos-//')
+          fi
+
+          ARCH_TAG="${{ matrix.arch }}"
+
+          if [ "$ARCH_TAG" == "arm64" ]; then
+              ARCH_PREFIX="${ARCH_TAG}_"
+          else
+              ARCH_PREFIX=""
+          fi
+          
+          FILE_NAME="${FORMULA_NAME}-${FORMULA_VERSION}_${FORMULA_REVISION}.${ARCH_PREFIX}${OS_TAG}.bottle.tar.gz"
+          FILE_NAME=$(echo "$FILE_NAME" | sed 's/--/-/g')
+          
+          echo "Expected file: $FILE_NAME"
+          
+          RELEASE_ASSETS=$(gh release view "$RELEASE_TAG" --json assets 2>/dev/null || true)
+          
+          if [[ "$RELEASE_ASSETS" == *"$FILE_NAME"* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "--- Bottle for this configuration already exists. Skipping build and upload. ---"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "--- Bottle does not exist. Proceeding with build. ---"
+          fi
+
+      - name: Set up Homebrew for ${{ matrix.arch }}
+        if: steps.check_bottle.outputs.skip == 'false'
+        run: |
+          if [ "${{ matrix.arch }}" == "x86_64" ]; then
+            echo "--- Installing Homebrew for x86_64 ---"
+            export PATH="/usr/local/bin:$PATH"
+            arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+            echo "/usr/local/bin" >> "$GITHUB_PATH"
+          else
+            echo "--- Using default Homebrew for arm64 ---"
+          fi
+
+      - name: Tap formula
+        if: steps.check_bottle.outputs.skip == 'false'
+        run: |
+          if [ "${{ matrix.arch }}" == "x86_64" ]; then
+            arch -x86_64 brew tap lgpl-dev/mpv-lgpl
+          else
+            brew tap lgpl-dev/mpv-lgpl
+          fi
+
+      - name: Install formula and build bottle
+        if: steps.check_bottle.outputs.skip == 'false'
+        id: bottle
+        run: |
+          if [ "${{ matrix.arch }}" == "x86_64" ]; then
+            arch -x86_64 brew install mpv-lgpl --build-bottle
+            arch -x86_64 brew bottle --json --no-rebuild mpv-lgpl
+          else
+            brew install mpv-lgpl --build-bottle
+            brew bottle --json --no-rebuild mpv-lgpl
+          fi
+          
+          JSON_FILE=$(ls -1 *.json | head -n 1)
+          BOTTLE_FILENAME=$(ls -1 *.tar.gz | head -n 1)
+
+          NEW_BOTTLE_FILENAME=$(echo "$BOTTLE_FILENAME" | sed 's/--/-/g')
+          if [ "$BOTTLE_FILENAME" != "$NEW_BOTTLE_FILENAME" ]; then
+            echo "--- Renaming bottle file from '$BOTTLE_FILENAME' to '$NEW_BOTTLE_FILENAME' ---"
+            mv "$BOTTLE_FILENAME" "$NEW_BOTTLE_FILENAME"
+            BOTTLE_FILENAME=$NEW_BOTTLE_FILENAME
+            
+            NEW_JSON_FILE=$(echo "$JSON_FILE" | sed 's/--/-/g')
+            mv "$JSON_FILE" "$NEW_JSON_FILE"
+            JSON_FILE=$NEW_JSON_FILE
+
+            jq '.[].bottle.tags[] |= if .local_filename? then .local_filename |= sub("--"; "-") else . end' "$JSON_FILE" > temp.json && mv temp.json "$JSON_FILE" || true
+          fi
+
+          if [ "${{ matrix.os }}" == "macos-13" ] && [ "${{ matrix.arch }}" == "arm64" ] && [[ ! "$BOTTLE_FILENAME" =~ arm64 ]]; then
+            echo "--- Correcting arm64 bottle file names ---"
+            
+            ORIGINAL_TAG=$(echo "$JSON_FILE" | sed -E 's/.*\.([a-z0-9_]+)\.bottle\.json/\1/')
+            
+            NEW_BOTTLE_FILENAME=$(echo "$BOTTLE_FILENAME" | sed "s/\.${ORIGINAL_TAG}\.bottle\.tar\.gz$/\.arm64_${ORIGINAL_TAG}\.bottle\.tar\.gz/")
+            mv "$BOTTLE_FILENAME" "$NEW_BOTTLE_FILENAME"
+            BOTTLE_FILENAME=$NEW_BOTTLE_FILENAME
+            
+            NEW_JSON_FILE=$(echo "$JSON_FILE" | sed "s/\.${ORIGINAL_TAG}\.bottle\.json$/\.arm64_${ORIGINAL_TAG}\.bottle\.json/")
+            mv "$JSON_FILE" "$NEW_JSON_FILE"
+            JSON_FILE=$NEW_JSON_FILE
+            
+            jq --arg original "$ORIGINAL_TAG" --arg new "arm64_${ORIGINAL_TAG}" \
+              '.[] |= (.bottle.tags[$new] = .bottle.tags[$original] | del(.bottle.tags[$original]))' "$JSON_FILE" > temp.json && mv temp.json "$JSON_FILE" || true
+          fi
+
+          echo "--- DEBUG: JSON file content ---"
+          cat "$JSON_FILE"
+          
+          FORMULA_VERSION=$(jq -r '.[].formula.pkg_version' "$JSON_FILE")
+          echo "BOTTLE_FILENAME=$BOTTLE_FILENAME" >> "$GITHUB_OUTPUT"
+          echo "JSON_FILENAME=$JSON_FILE" >> "$GITHUB_OUTPUT"
+          echo "FORMULA_VERSION=$FORMULA_VERSION" >> "$GITHUB_OUTPUT"
+          
+      - name: Create or get release
+        if: steps.check_bottle.outputs.skip == 'false'
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FORMULA_VERSION=$(jq -r '.[].formula.pkg_version' "${{ steps.bottle.outputs.JSON_FILENAME }}")
+          
+          if [[ "$FORMULA_VERSION" == *_* ]]; then
+            RELEASE_TAG="v$FORMULA_VERSION"
+          else
+            RELEASE_TAG="v${FORMULA_VERSION}_0"
+          fi
+          
+          RELEASE_INFO=$(gh release view "$RELEASE_TAG" --json url 2>/dev/null || true)
+          
+          if [[ -z "$RELEASE_INFO" ]]; then
+            gh release create "$RELEASE_TAG" \
+              --title "mpv-lgpl v${FORMULA_VERSION}" \
+              --notes "New bottles for mpv-lgpl."
+          fi
+          
+      - name: Upload assets to release
+        if: steps.check_bottle.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          FORMULA_VERSION=$(jq -r '.[].formula.pkg_version' "${{ steps.bottle.outputs.JSON_FILENAME }}")
+          
+          if [[ "$FORMULA_VERSION" == *_* ]]; then
+            RELEASE_TAG="v$FORMULA_VERSION"
+          else
+            RELEASE_TAG="v${FORMULA_VERSION}_0"
+          fi
+          
+          gh release upload "$RELEASE_TAG" \
+            "${{ steps.bottle.outputs.BOTTLE_FILENAME }}" \
+            "${{ steps.bottle.outputs.JSON_FILENAME }}" \
+            --clobber
