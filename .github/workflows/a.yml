@@ -1,0 +1,36 @@
+name: Test Python 3.13 Install (x86_64)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: none
+
+jobs:
+  test-install:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        arch: [x86_64]
+    
+    steps:
+      - name: Set up Homebrew for x86_64
+        run: |
+          echo "--- Installing Homebrew for x86_64 ---"
+          export PATH="/usr/local/bin:$PATH"
+          arch -x86_64 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+          echo "/usr/local/bin" >> "$GITHUB_PATH"
+
+      - name: Install python@3.13
+        env:
+          HOMEBREW_OVERWRITE: true
+        run: |
+          echo "--- Installing python@3.13 on x86_64 with HOMEBREW_OVERWRITE ---"
+          arch -x86_64 brew install python@3.13
+          
+      - name: Verify python installation
+        run: |
+          echo "--- Verifying python installation ---"
+          arch -x86_64 /usr/local/bin/python3.13 --version
+          echo "--- Listing symlinks in /usr/local/bin ---"
+          ls -l /usr/local/bin | grep python
